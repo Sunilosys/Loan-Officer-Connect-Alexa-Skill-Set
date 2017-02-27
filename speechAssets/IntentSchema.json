@@ -1,0 +1,43 @@
+{
+  "intents": [
+    {
+      "intent": "RateLockExpIntent",
+       "slots": [
+        {
+          "name": "Duration",
+          "type": "LIST_OF_DURATION"
+        }
+      ]
+    },
+    {
+      "intent": "CurrentRateProgramIntent",
+       "slots": [
+        {
+          "name": "LastName",
+          "type": "AMAZON.PERSON"
+        }
+      ]
+    },
+    {
+      "intent": "FindProgramIntent",
+      "slots": [
+        {
+          "name": "LastName",
+          "type": "AMAZON.PERSON"
+        }
+      ]
+    },
+    {
+      "intent": "LogOutIntent"
+    },
+    {
+      "intent": "AMAZON.HelpIntent"
+    },
+     {
+      "intent": "AMAZON.StopIntent"
+    },
+     {
+      "intent": "AMAZON.CancelIntent"
+    }
+  ]
+}
