@@ -21,6 +21,7 @@
 //global variables
 var https = require("https");
 var process = require("process");
+var querystring = require('querystring');
 var EBS_HOST_NAME = process.env.EBS_API_URL;
 var OPEN_API_HOST_NAME = process.env.OPEN_API_URL;
 var authToken;
@@ -382,12 +383,12 @@ var strProductPricingRequest = `{
                     },
                     {
                       "name": "UserName",
-                      "value":` + process.env.EVP_USER  + `,
+                      "value":"",
                       "type": "string"
                     },
                     {
                       "name": "Password",
-                      "value":` + process.env.EVP_PASSWORD + `,
+                      "value":"",
                       "type": "string"
                     },
                     {
@@ -477,8 +478,8 @@ function onSessionStarted(sessionStartedRequest, session) {
 function onLaunch(launchRequest, session, callback) {
     console.log("onLaunch requestId=" + launchRequest.requestId
         + ", sessionId=" + session.sessionId);
-     authToken = session.user.accessToken; 
-     validateAccessToken(callback,authToken);
+    authToken = session.user.accessToken;
+    validateAccessToken(callback,session, authToken);
 }
 
 /**
@@ -493,8 +494,7 @@ function onIntent(intentRequest, session, callback) {
 
     var lastName;
     // dispatch custom intents to handlers here
-    switch (intentName)
-    {
+    switch (intentName) {
         case "RateLockExpIntent":
             var duration = getDurationFromIntent(intent);
             makeRateLockExpirationRequest(callback, duration);
@@ -594,41 +594,46 @@ function handleFinishSessionRequest(intent, session, callback) {
 
 
 // ------- Helper functions to build responses -------
-function validateAccessToken(callback,authToken) {
+function validateAccessToken(callback,session, authToken) {
+    var postData = querystring.stringify({
+        client_id: clientID,
+        client_secret: clientSecret,
+        token: authToken
+    });
     var tokenDetails = '';
     var options = {
         hostname: OPEN_API_HOST_NAME,
-        path: '/oauth2/v1/token/introspection?client_id=' + clientID + '&client_secret=' + clientSecret + '&token='+ authToken,
+        path: '/oauth2/v1/token/introspection',
         method: 'POST',
-
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded'
         }
     };
     var req = https.request(options, function (res) {
-        if (res.statusCode != 201) {
+        if (res.statusCode != 200) {
             console.log('Invalid or Expired Access Token');
             //getErrorResponse(callback, new Error('Invalid or Expired Access Token'));
             callback(session.attributes,
-            showAccountLinkingCard(CARD_TITLE, "Access Token Expired. Please go to your Alexa app and link your account.", "", true));
+                showAccountLinkingCard(CARD_TITLE, "Access Token Expired. Please go to your Alexa app and link your account.", "", true));
 
         }
-         res.on('data', function (chunk) {
+        res.on('data', function (chunk) {
             tokenDetails += chunk;
 
         });
-         res.on('end', function () {
+        res.on('end', function () {
             var tokenObj = JSON.parse(tokenDetails);
             globalSessionId = tokenObj.bearer_token;
             makeUserProfileRequest(callback);
         });
-       
+
     });
     req.on('error', function (e) {
         console.log('problem with request: ' + e.message);
         getErrorResponse(callback, new Error('problem with request: ' + e.message));
     });
     // write data to request body
+    req.write(postData);
     req.end();
 
 }
@@ -685,11 +690,11 @@ function makeRateLockExpirationRequest(callback, duration) {
         'LoanFolder': workingFolder
 
     }
-       var durationStr = "for this week";
-                if (duration == 'CurrentMonth')
-                    durationStr = "for this month";
-                else if (duration == 'Today')
-                     durationStr = "today";
+    var durationStr = "for this week";
+    if (duration == 'CurrentMonth')
+        durationStr = "for this month";
+    else if (duration == 'Today')
+        durationStr = "today";
     var pipelineData = '';
     var options = {
         hostname: EBS_HOST_NAME,
@@ -876,7 +881,7 @@ function makeGetLoanRequest(borrowerLastName, callback) {
 
     req.on('error', function (e) {
         console.log('problem with request: ' + e.message);
-        getErrorResponse(callback,new Error('problem with request: ' + e.message));
+        getErrorResponse(callback, new Error('problem with request: ' + e.message));
     });
     // write data to request body
     req.write(JSON.stringify(borrowNameSearchPayload));
@@ -904,7 +909,7 @@ function searchProductPricingRequest(pipelineData, callback) {
     loanData.push({ "name": "CLTV", "value": Number(pipelineData.filter(function (el) { return (el.Name === "Loan.CLTV"); })[0].Value), "type": "string" });
     loanData.push({ "name": "SubjectPropertyState", "value": pipelineData.filter(function (el) { return (el.Name === "Fields.14"); })[0].Value, "type": "string" });
     loanData.push({ "name": "PostalCode", "value": pipelineData.filter(function (el) { return (el.Name === "Fields.15"); })[0].Value, "type": "string" });
-   loanData.push({"name": "NumberofUnits","value": Number(pipelineData.filter(function (el) {return (el.Name === "Fields.16");})[0].Value) < 1 ? "1" : Number(pipelineData.filter(function (el) {return (el.Name === "Fields.16");})[0].Value),"type": "string"});
+    loanData.push({ "name": "NumberofUnits", "value": Number(pipelineData.filter(function (el) { return (el.Name === "Fields.16"); })[0].Value) < 1 ? "1" : Number(pipelineData.filter(function (el) { return (el.Name === "Fields.16"); })[0].Value), "type": "string" });
     loanData.push({ "name": "PropertyType", "value": pipelineData.filter(function (el) { return (el.Name === "Fields.1041"); })[0].Value, "type": "string" });
     loanData.push({ "name": "OccupancyType", "value": pipelineData.filter(function (el) { return (el.Name === "Fields.1811"); })[0].Value, "type": "string" });
     loanData.push({ "name": "TotalMonthlyIncome", "value": Number(pipelineData.filter(function (el) { return (el.Name === "Fields.736"); })[0].Value), "type": "string" });
@@ -921,7 +926,7 @@ function searchProductPricingRequest(pipelineData, callback) {
     loanData.push({ "name": "TargetPrice", "value": "", "type": "string" });
     loanData.push({ "name": "TargetRate", "value": 4, "type": "string" });
     loanData.push({ "name": "LienPosition", "value": pipelineData.filter(function (el) { return (el.Name === "Fields.420"); })[0].Value == null ? "FirstLien" : pipelineData.filter(function (el) { return (el.Name === "Fields.420"); })[0].Value.replace(' ', ''), "type": "string" });
-    loanData.push({"name": "AmortizationType","value": {"list": {"name": "AmortizationType","values": {"value": ["Fixed"]}}},"type": "list"});
+    loanData.push({ "name": "AmortizationType", "value": { "list": { "name": "AmortizationType", "values": { "value": ["Fixed"] } } }, "type": "list" });
     loanData.push({ "name": "LoanTerm", "value": { "list": { "name": "LoanTerm", "values": { "value": [360] } } }, "type": "list" });
     loanData.push({ "name": "NoLoanGUID", "value": true, "type": "string" });
     loanData.push({ "name": "EPPSLoanID", "value": "", "type": "string" });
@@ -1081,7 +1086,7 @@ function getDurationFromIntent(intent) {
         return 'CurrentWeek';
     } else {
         var duration = 'CurrentWeek';
-       if (durationSlot.value.toLowerCase().indexOf('month') != -1)
+        if (durationSlot.value.toLowerCase().indexOf('month') != -1)
             duration = 'CurrentMonth';
         else if (durationSlot.value.toLowerCase().indexOf('today') != -1)
             duration = 'Today';
