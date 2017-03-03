@@ -387,7 +387,7 @@ var strProductPricingRequest = `{
                     },
                     {
                       "name": "Password",
-                      "value":` + process.env.EVP_PASSWORD `,
+                      "value":` + process.env.EVP_PASSWORD + `,
                       "type": "string"
                     },
                     {
