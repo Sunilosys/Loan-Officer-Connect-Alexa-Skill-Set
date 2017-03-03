@@ -10,19 +10,28 @@
 
 'use strict';
 
+/**
+ * When editing your questions pay attention to your punctuation. Make sure you use question marks or periods.
+ * Make sure the first answer is the correct one. Set at least 4 answers, any extras will be shuffled in.
+ */
+
 // Route the incoming request based on type (LaunchRequest, IntentRequest,
 // etc.) The JSON body of the request is provided in the event parameter.
-//This is a sample Loan Officer Connect Alexa Skill Set
+
 //global variables
 var https = require("https");
-var hostName, authToken, clientID, userName, password, globalSessionId, userProfileObj, workingFolder;
+var process = require("process");
+var EBS_HOST_NAME = process.env.EBS_API_URL;
+var OPEN_API_HOST_NAME = process.env.OPEN_API_URL;
+var authToken;
+var clientID = process.env.CLIENT_ID;
+var clientSecret = process.env.CLIENT_SECRET
+var userName;
+var globalSessionId;
+var userProfileObj;
+var workingFolder = 'Amazon Echo';
 var logOutMessage = 'You have been logged out from Encompass Loan Officer Connect';
 
-var authPayload = {
-    UserName: userName,
-    Password: password,
-    Realm: clientID
-}
 var defaultFields = [
     { 'Name': 'Messages.MessageCount' },
     { 'Name': 'Loan.BorrowerName' },  // 4000,4001,4002,4003
@@ -373,12 +382,12 @@ var strProductPricingRequest = `{
                     },
                     {
                       "name": "UserName",
-                      "value": "evp_admin",
+                      "value":` + process.env.EVP_USER  + `,
                       "type": "string"
                     },
                     {
                       "name": "Password",
-                      "value": "XXXXXXX",
+                      "value":` + process.env.EVP_PASSWORD `,
                       "type": "string"
                     },
                     {
@@ -415,6 +424,13 @@ var strProductPricingRequest = `{
 }`
 
 var productPricingRequestObj = JSON.parse(strProductPricingRequest);
+
+Array.prototype.hasMin = function (attrib) {
+    return this.reduce(function (prev, curr) {
+        return prev[attrib] < curr[attrib] ? prev : curr;
+    });
+}
+
 
 exports.handler = function (event, context) {
     try {
@@ -461,11 +477,8 @@ function onSessionStarted(sessionStartedRequest, session) {
 function onLaunch(launchRequest, session, callback) {
     console.log("onLaunch requestId=" + launchRequest.requestId
         + ", sessionId=" + session.sessionId);
-    if (useScript)
-        getWelcomeResponse(callback, defaultWelcomeGreetingName)
-    else
-        AuthenticateUser(callback);
-
+     authToken = session.user.accessToken; 
+     validateAccessToken(callback,authToken);
 }
 
 /**
@@ -480,18 +493,19 @@ function onIntent(intentRequest, session, callback) {
 
     var lastName;
     // dispatch custom intents to handlers here
-    switch (intentName) {
+    switch (intentName)
+    {
         case "RateLockExpIntent":
             var duration = getDurationFromIntent(intent);
-            useScript ? handleAnswerRequest(callback, defaultRateLockExpirationAnswer, false) : makeRateLockExpirationRequest(callback, duration);
+            makeRateLockExpirationRequest(callback, duration);
             break;
         case "CurrentRateProgramIntent":
             lastName = getBorrowerNameFromIntent(intent, true);
-            useScript ? handleAnswerRequest(callback, defaultCurrentRateProgramAnswer, false) : makeCurrentRateAndProgramRequest(lastName, callback);
+            makeCurrentRateAndProgramRequest(lastName, callback);
             break;
         case "FindProgramIntent":
             lastName = getBorrowerNameFromIntent(intent, true);
-            useScript ? handleAnswerRequest(callback, defaultProductPricingAnswer, false) : makeGetLoanRequest(lastName, callback);
+            makeGetLoanRequest(lastName, callback);
             break;
         case "LogOutIntent":
             handleAnswerRequest(callback, logOutMessage, true);
@@ -523,11 +537,8 @@ function onSessionEnded(sessionEndedRequest, session) {
     // Add any cleanup logic here
 }
 
-var CARD_TITLE = "LO Connect";
+var CARD_TITLE = "Loan Officer Connect";
 
-/**
- * Called when the user logins to Loan Officer Connect.
- */
 function getWelcomeResponse(callback, fullName) {
     var sessionAttributes = {},
         whatDoYouLikeToKnowPrompt = " What do you like to know?",
@@ -537,9 +548,6 @@ function getWelcomeResponse(callback, fullName) {
         buildSpeechletResponse(CARD_TITLE, speechOutput, null, shouldEndSession));
 }
 
-/**
- * Called if there is any error.
- */
 function getErrorResponse(callback, error) {
     var sessionAttributes = {};
 
@@ -555,9 +563,7 @@ function handleAnswerRequest(callback, speechOutput, shouldEndSession) {
 
 }
 
-/**
- * Called when the user invokes help intent.
- */
+
 function handleGetHelpRequest(intent, session, callback) {
     // Provide a help prompt for the user, explaining how the game is played. Then, continue the game
     // if there is one in progress, or provide the option to start another one.
@@ -580,9 +586,6 @@ function handleGetHelpRequest(intent, session, callback) {
 
 }
 
-/**
- * Called to handle session end request.
- */
 function handleFinishSessionRequest(intent, session, callback) {
     // End the session with a "Good bye!" if the user wants to quit the game
     callback(session.attributes,
@@ -590,36 +593,42 @@ function handleFinishSessionRequest(intent, session, callback) {
 }
 
 
-// ------- EBS API Call Requests -------
-function AuthenticateUser(callback) {
+// ------- Helper functions to build responses -------
+function validateAccessToken(callback,authToken) {
+    var tokenDetails = '';
     var options = {
-        hostname: hostName,
-        path: '/v2/auth/sessions',
+        hostname: OPEN_API_HOST_NAME,
+        path: '/oauth2/v1/token/introspection?client_id=' + clientID + '&client_secret=' + clientSecret + '&token='+ authToken,
         method: 'POST',
 
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/x-www-form-urlencoded'
         }
     };
     var req = https.request(options, function (res) {
         if (res.statusCode != 201) {
-            console.log('Non 201 Response');
-            getErrorResponse(callback, new Error('Non 201 Response'));
-        }
-        else {
-            var location = JSON.parse(JSON.stringify(res.headers)).location;
-            globalSessionId = location.split('/').pop();
-            //getWelcomeResponse(callback);
-            makeUserProfileRequest(callback);
-        }
+            console.log('Invalid or Expired Access Token');
+            //getErrorResponse(callback, new Error('Invalid or Expired Access Token'));
+            callback(session.attributes,
+            showAccountLinkingCard(CARD_TITLE, "Access Token Expired. Please go to your Alexa app and link your account.", "", true));
 
+        }
+         res.on('data', function (chunk) {
+            tokenDetails += chunk;
+
+        });
+         res.on('end', function () {
+            var tokenObj = JSON.parse(tokenDetails);
+            globalSessionId = tokenObj.bearer_token;
+            makeUserProfileRequest(callback);
+        });
+       
     });
     req.on('error', function (e) {
         console.log('problem with request: ' + e.message);
         getErrorResponse(callback, new Error('problem with request: ' + e.message));
     });
     // write data to request body
-    req.write(JSON.stringify(authPayload));
     req.end();
 
 }
@@ -627,7 +636,7 @@ function AuthenticateUser(callback) {
 function makeUserProfileRequest(callback) {
     var userProfile = '';
     var options = {
-        hostname: hostName,
+        hostname: EBS_HOST_NAME,
         path: '/users/' + userName,
         method: 'GET',
         headers: {
@@ -676,14 +685,14 @@ function makeRateLockExpirationRequest(callback, duration) {
         'LoanFolder': workingFolder
 
     }
-    var durationStr = "for this week";
-    if (duration == 'CurrentMonth')
-        durationStr = "for this month";
-    else if (duration == 'Today')
-        durationStr = "today";
+       var durationStr = "for this week";
+                if (duration == 'CurrentMonth')
+                    durationStr = "for this month";
+                else if (duration == 'Today')
+                     durationStr = "today";
     var pipelineData = '';
     var options = {
-        hostname: hostName,
+        hostname: EBS_HOST_NAME,
         path: '/loans/pipeline/paged',
         method: 'POST',
 
@@ -756,7 +765,7 @@ function makeCurrentRateAndProgramRequest(borrowerLastName, callback) {
     }
     var pipelineData = '';
     var options = {
-        hostname: hostName,
+        hostname: EBS_HOST_NAME,
         path: '/loans/pipeline/paged',
         method: 'POST',
 
@@ -825,7 +834,7 @@ function makeGetLoanRequest(borrowerLastName, callback) {
     }
     var pipelineData = '';
     var options = {
-        hostname: hostName,
+        hostname: EBS_HOST_NAME,
         path: '/loans/pipeline/paged',
         method: 'POST',
 
@@ -867,7 +876,7 @@ function makeGetLoanRequest(borrowerLastName, callback) {
 
     req.on('error', function (e) {
         console.log('problem with request: ' + e.message);
-        getErrorResponse(callback, new Error('problem with request: ' + e.message));
+        getErrorResponse(callback,new Error('problem with request: ' + e.message));
     });
     // write data to request body
     req.write(JSON.stringify(borrowNameSearchPayload));
@@ -895,7 +904,7 @@ function searchProductPricingRequest(pipelineData, callback) {
     loanData.push({ "name": "CLTV", "value": Number(pipelineData.filter(function (el) { return (el.Name === "Loan.CLTV"); })[0].Value), "type": "string" });
     loanData.push({ "name": "SubjectPropertyState", "value": pipelineData.filter(function (el) { return (el.Name === "Fields.14"); })[0].Value, "type": "string" });
     loanData.push({ "name": "PostalCode", "value": pipelineData.filter(function (el) { return (el.Name === "Fields.15"); })[0].Value, "type": "string" });
-    loanData.push({ "name": "NumberofUnits", "value": Number(pipelineData.filter(function (el) { return (el.Name === "Fields.16"); })[0].Value) < 1 ? "1" : Number(pipelineData.filter(function (el) { return (el.Name === "Fields.16"); })[0].Value), "type": "string" });
+   loanData.push({"name": "NumberofUnits","value": Number(pipelineData.filter(function (el) {return (el.Name === "Fields.16");})[0].Value) < 1 ? "1" : Number(pipelineData.filter(function (el) {return (el.Name === "Fields.16");})[0].Value),"type": "string"});
     loanData.push({ "name": "PropertyType", "value": pipelineData.filter(function (el) { return (el.Name === "Fields.1041"); })[0].Value, "type": "string" });
     loanData.push({ "name": "OccupancyType", "value": pipelineData.filter(function (el) { return (el.Name === "Fields.1811"); })[0].Value, "type": "string" });
     loanData.push({ "name": "TotalMonthlyIncome", "value": Number(pipelineData.filter(function (el) { return (el.Name === "Fields.736"); })[0].Value), "type": "string" });
@@ -912,7 +921,7 @@ function searchProductPricingRequest(pipelineData, callback) {
     loanData.push({ "name": "TargetPrice", "value": "", "type": "string" });
     loanData.push({ "name": "TargetRate", "value": 4, "type": "string" });
     loanData.push({ "name": "LienPosition", "value": pipelineData.filter(function (el) { return (el.Name === "Fields.420"); })[0].Value == null ? "FirstLien" : pipelineData.filter(function (el) { return (el.Name === "Fields.420"); })[0].Value.replace(' ', ''), "type": "string" });
-    loanData.push({ "name": "AmortizationType", "value": { "list": { "name": "AmortizationType", "values": { "value": ["Fixed"] } } }, "type": "list" });
+    loanData.push({"name": "AmortizationType","value": {"list": {"name": "AmortizationType","values": {"value": ["Fixed"]}}},"type": "list"});
     loanData.push({ "name": "LoanTerm", "value": { "list": { "name": "LoanTerm", "values": { "value": [360] } } }, "type": "list" });
     loanData.push({ "name": "NoLoanGUID", "value": true, "type": "string" });
     loanData.push({ "name": "EPPSLoanID", "value": "", "type": "string" });
@@ -920,7 +929,7 @@ function searchProductPricingRequest(pipelineData, callback) {
     productPricingRequestObj.REQUEST_GROUP.REQUEST.REQUEST_DATA.params.param[1].value.structs.struct[0].member = loanData;
     var productPricingData = '';
     var options = {
-        hostname: hostName,
+        hostname: EBS_HOST_NAME,
         path: '/v2/vendor/transactions',
         method: 'POST',
 
@@ -971,7 +980,7 @@ function makeProductPricingDetailsRequest(transactionData, callback) {
         '&vendorKey=' + transactionData.VendorKey;
 
     var options = {
-        hostname: hostName,
+        hostname: EBS_HOST_NAME,
         path: '/v2/vendor/transactions' + queryString,
         method: 'GET',
 
@@ -1043,9 +1052,43 @@ function makeProductPricingDetailsRequest(transactionData, callback) {
 
     req.end();
 }
-// ------- End EBS API Call Requests -------
 
-// ------- Helper Functions to build speech output -------
+
+function getBorrowerNameFromIntent(intent, assignDefault) {
+
+    var nameSlot = intent.slots.LastName;
+
+    if (!nameSlot || !nameSlot.value) {
+        if (!assignDefault) {
+            return {
+                error: true
+            }
+        } else {
+
+            return 'Johnson';
+        }
+    } else {
+
+        return nameSlot.value;
+    }
+}
+
+function getDurationFromIntent(intent) {
+
+    var durationSlot = intent.slots.Duration;
+
+    if (!durationSlot || !durationSlot.value) {
+        return 'CurrentWeek';
+    } else {
+        var duration = 'CurrentWeek';
+       if (durationSlot.value.toLowerCase().indexOf('month') != -1)
+            duration = 'CurrentMonth';
+        else if (durationSlot.value.toLowerCase().indexOf('today') != -1)
+            duration = 'Today';
+        return duration;
+    }
+}
+
 function buildSpeechletResponse(title, output, repromptText, shouldEndSession) {
     return {
         outputSpeech: {
@@ -1054,6 +1097,27 @@ function buildSpeechletResponse(title, output, repromptText, shouldEndSession) {
         },
         card: {
             type: "Simple",
+            title: title,
+            content: output
+        },
+        reprompt: {
+            outputSpeech: {
+                type: "PlainText",
+                text: repromptText
+            }
+        },
+        shouldEndSession: shouldEndSession
+    };
+}
+
+function showAccountLinkingCard(title, output, repromptText, shouldEndSession) {
+    return {
+        outputSpeech: {
+            type: "PlainText",
+            text: output
+        },
+        card: {
+            type: "LinkAccount",
             title: title,
             content: output
         },
@@ -1090,50 +1154,4 @@ function buildResponse(sessionAttributes, speechletResponse) {
         response: speechletResponse
     };
 }
-
-function getBorrowerNameFromIntent(intent, assignDefault) {
-
-    var nameSlot = intent.slots.LastName;
-
-    if (!nameSlot || !nameSlot.value) {
-        if (!assignDefault) {
-            return {
-                error: true
-            }
-        } else {
-
-            return 'Johnson';
-        }
-    } else {
-
-        return nameSlot.value;
-    }
-}
-
-// ------- End Helper Functions to build speech output -------
-
-// ------- Helper Functions -------
-Array.prototype.hasMin = function (attrib) {
-    return this.reduce(function (prev, curr) {
-        return prev[attrib] < curr[attrib] ? prev : curr;
-    });
-}
-
-
-function getDurationFromIntent(intent) {
-
-    var durationSlot = intent.slots.Duration;
-
-    if (!durationSlot || !durationSlot.value) {
-        return 'CurrentWeek';
-    } else {
-        var duration = 'CurrentWeek';
-        if (durationSlot.value.toLowerCase().indexOf('month') != -1)
-            duration = 'CurrentMonth';
-        else if (durationSlot.value.toLowerCase().indexOf('today') != -1)
-            duration = 'Today';
-        return duration;
-    }
-}
-// ------- End Helper Functions -------
 
