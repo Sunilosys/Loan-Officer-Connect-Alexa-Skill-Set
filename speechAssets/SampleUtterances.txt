@@ -5,11 +5,6 @@ RateLockExpIntent What loans have Rate Lock Expirations
 CurrentRateProgramIntent What is the current rate and program for the {LastName} loan
 CurrentRateProgramIntent current rate and program for the {LastName} loan
 CurrentRateProgramIntent What is the current rate and program for {LastName} loan
-FindProgramIntent Run PPE on the {LastName} loan and find a thirty year fixed program with a lower rate
-FindProgramIntent Run PPE on the {LastName} loan
-FindProgramIntent Run product pricing engine on the {LastName} loan
-FindProgramIntent Run product pricing engine on the {LastName}
-FindProgramIntent find a thirty year fixed mortgage program with a lower rate for the {LastName} loan
 LogOutIntent Logout
 LogOutIntent Signout
 AMAZON.HelpIntent help
