@@ -1,0 +1,100 @@
+{
+  "intents": [
+    {
+      "name": "AMAZON.CancelIntent",
+      "samples": []
+    },
+    {
+      "name": "AMAZON.HelpIntent",
+      "samples": []
+    },
+    {
+      "name": "AMAZON.StopIntent",
+      "samples": []
+    },
+    {
+      "name": "CurrentRateProgramIntent",
+      "samples": [
+        "What is the current rate and program for the {LastName} loan",
+        "What is the current rate for the {LastName} loan",
+        "Check current rate",
+        "Check current rate on the {LastName} loan",
+        "Check the current rate and program for the {LastName} loan"
+      ],
+      "slots": [
+        {
+          "name": "LastName",
+          "type": "AMAZON.Person",
+          "samples": []
+        }
+      ]
+    },
+    {
+      "name": "FindProgramIntent",
+      "samples": [
+        "Search for a better rate on the {LastName} loan",
+        "Search for a better rate",
+        "Run product pricing engine on the {LastName} loan"
+      ],
+      "slots": [
+        {
+          "name": "LastName",
+          "type": "AMAZON.Person",
+          "samples": []
+        }
+      ]
+    },
+    {
+      "name": "LogInIntent",
+      "samples": [
+        "Log me to Loan Officer Connect"
+      ],
+      "slots": []
+    },
+    {
+      "name": "LogOutIntent",
+      "samples": [
+        "Logout",
+        "Signout"
+      ],
+      "slots": []
+    },
+    {
+      "name": "RateLockExpIntent",
+      "samples": [
+        "What loans have Rate Lock Expirations this {Duration}",
+        "What loans have Rate Lock Expirations {Duration}",
+        "Rate Lock Expirations this {Duration}",
+        "What loans have Rate Lock Expirations"
+      ],
+      "slots": [
+        {
+          "name": "Duration",
+          "type": "LIST_OF_DURATION",
+          "samples": []
+        }
+      ]
+    }
+  ],
+  "types": [
+    {
+      "name": "LIST_OF_DURATION",
+      "values": [
+        {
+          "id": null,
+          "name": {
+            "value": "Month",
+            "synonyms": []
+          }
+        },
+        {
+          "id": null,
+          "name": {
+            "value": "Today",
+            "synonyms": []
+          }
+        }
+      ]
+    }
+  ]
+}
