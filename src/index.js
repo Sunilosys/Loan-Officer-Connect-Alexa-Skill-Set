@@ -15,53 +15,14 @@ var workingFolder = 'Amazon Echo';
 var logOutMessage = 'You have been logged out from Encompass Loan Officer Connect';
 
 var defaultFields = [
-    { 'Name': 'Messages.MessageCount' },
-    { 'Name': 'Loan.BorrowerName' },  // 4000,4001,4002,4003
-    { 'Name': 'Loan.DateCreated' },
-    { 'Name': 'Loan.LockStatus' },
-    { 'Name': 'Loan.LastModified' },
-    { 'Name': 'Fields.MS.STATUS' },  // lastFinishedMilestone
-    { 'Name': 'Fields.4000' },       // BorrowerFirstName
-    { 'Name': 'Fields.4001' },       // BorrowerMiddleName
-    { 'Name': 'Fields.4002' },       // BorrowerLastName
-    { 'Name': 'Fields.4003' },       // suffix
-    { 'Name': 'Fields.11' },         // Address1
-    { 'Name': 'Fields.12' },         // City
-    { 'Name': 'Fields.14' },         // State
-    { 'Name': 'Fields.15' },         // Zip
-    { 'Name': 'Fields.16' },         // No Of Units
-    { 'Name': 'Fields.3' },          // InterestRate
-    { 'Name': 'Fields.1401' },       // Program
-    { 'Name': 'Fields.19' },         // Purpose
-    { 'Name': 'Alerts.AlertCount' },
-    { 'Name': 'Fields.136' },  // Purchase Price Property Value
-    { 'Name': 'Fields.763' },  // Est. Closing Date
-    { 'Name': 'Fields.748' },  // Closing Date
-    { 'Name': 'Loan.LockAndRequestStatus' },
-    { 'Name': 'Fields.762' },  // LockExpirationDate
-    { 'Name': 'Fields.432' },  // RateLockDays
-    { 'Name': 'Loan.CurrentMilestoneName' },
-    { 'Name': 'NextMilestone.MilestoneName' },
-    { 'Name': 'CurrentLoanAssociate.FullName' },
-    { 'Name': 'Fields.1855' },        // Closer
-    { 'Name': 'Fields.362' },         // Processor
-    { 'Name': 'Fields.REGZGFE.X8' },  // underwriter
-    { 'Name': 'Fields.364' },         // LoanNumber
-    { 'Name': 'Fields.2' },           // Amount
-    { 'Name': 'Fields.740' },         // dti
-    { 'Name': 'Fields.742' },         // dti
-    { 'Name': 'Fields.353' },         // ltv
-    { 'Name': 'Loan.CLTV' },         // cltv
-    { 'Name': 'Fields.VASUMM.X23' },         // Credit Score
-    { 'Name': 'Fields.420' },               //Lien Position
-    { 'Name': 'Fields.384' },               //Loan Purpose
-    { 'Name': 'Fields.1109' },               //Base Loan Amount
-    { 'Name': 'Fields.736' },               //Monthly Income
-    { 'Name': 'Fields.MORNET.X67' },               //Documentation Types
-    { 'Name': 'Fields.1041' },               //Property Type
-    { 'Name': 'Fields.1811' },               //Occupany Type
-    { 'Name': 'Fields.1172' },               //Loan Type
-    { 'Name': 'Fields.608' }               //Amortization Type
+    "Loan.LoanFolder",
+    "Loan.LoanRate",
+    "Fields.3",
+    "Loan.LoanAmount",
+    "Loan.BorrowerName",
+    "Fields.4002",
+    "Fields.1401",
+    "Fields.762"
 ];
 
 Array.prototype.hasMin = function (attrib) {
@@ -70,6 +31,21 @@ Array.prototype.hasMin = function (attrib) {
     });
 }
 
+function getTodayDate() {
+    var today = new Date();
+    var dd = today.getDate();
+    var mm = today.getMonth() + 1; //January is 0!
+
+    var yyyy = today.getFullYear();
+    if (dd < 10) {
+        dd = '0' + dd;
+    }
+    if (mm < 10) {
+        mm = '0' + mm;
+    }
+    var today = mm + '/' + dd + '/' + yyyy;
+    return today;
+}
 
 exports.handler = function (event, context) {
     try {
@@ -117,7 +93,7 @@ function onLaunch(launchRequest, session, callback) {
     console.log("onLaunch requestId=" + launchRequest.requestId
         + ", sessionId=" + session.sessionId);
     authToken = session.user.accessToken;
-    validateAccessToken(callback,session, authToken);
+    validateAccessToken(callback, session, authToken);
 }
 
 /**
@@ -228,7 +204,7 @@ function handleFinishSessionRequest(intent, session, callback) {
 
 
 // ------- Helper functions to build responses -------
-function validateAccessToken(callback,session, authToken) {
+function validateAccessToken(callback, session, authToken) {
     var postData = querystring.stringify({
         client_id: clientID,
         client_secret: clientSecret,
@@ -273,15 +249,16 @@ function validateAccessToken(callback,session, authToken) {
 
 }
 
+//function to get the user profile details
 function makeUserProfileRequest(callback) {
     var userProfile = '';
     var options = {
         hostname: OPEN_API_HOST_NAME,
-        path: '/users/' + userName,
+        path: '/encompass/v1/users/' + userName,
         method: 'GET',
         headers: {
             'Content-Type': 'application/json',
-            'elli-session': globalSessionId
+            'Authorization': "Bearer " + authToken
         }
     };
     var req = https.request(options, function (res) {
@@ -298,8 +275,8 @@ function makeUserProfileRequest(callback) {
             userProfileObj = JSON.parse(userProfile);
             //getErrorResponse(callback, new Error(userProfileObj.toString()));
             if (userProfileObj != undefined) {
-                workingFolder = userProfileObj.GetUserPersonaRightsResponse.UserProfile.WorkingFolder;
-                getWelcomeResponse(callback, userProfileObj.GetUserPersonaRightsResponse.UserProfile.FullName);
+                workingFolder = userProfileObj.workingFolder;
+                getWelcomeResponse(callback, userProfileObj.fullName);
             }
         });
 
@@ -311,34 +288,55 @@ function makeUserProfileRequest(callback) {
     req.end();
 
 }
+//End
 
+//Function to get Rate Lock Expirations
 function makeRateLockExpirationRequest(callback, duration) {
-
-    var last7DaysRateLockExpPayload = {
-        'Fields': { 'PipelineField': defaultFields },
-        'Filter': { 'FilterCriterion': { 'DataType': 'IsDate', 'EvaluationOperator': duration, 'Field': 'Fields.762' } },
-        'MaxCount': 5,
-        'OrgType': 'Internal',
-        'Ownership': 'All',
-        'PageIndex': 0,
-        'PageSize': 5,
-        'LoanFolder': workingFolder
-
-    }
-    var durationStr = "for this week";
+   var precision = "day";
+   var durationStr = "today";
     if (duration == 'CurrentMonth')
+    {
         durationStr = "for this month";
+        precision = "month";
+    }
     else if (duration == 'Today')
+    {
         durationStr = "today";
-    var pipelineData = '';
-    var options = {
-        hostname: OPEN_API_HOST_NAME,
-        path: '/loans/pipeline/paged',
-        method: 'POST',
+        precision = "day";
+    }
+    var last7DaysRateLockExpPayload = {
+        'Fields': defaultFields,
+        'Filter': {
 
+            "terms": [
+                {
+                    "canonicalName": "Loan.LoanFolder",
+                    "value": workingFolder,
+                    "matchType": "exact"
+                },
+                {
+                    "operator": "and",
+                    "terms": [
+                        {
+                            "canonicalName": "Fields.762",
+                            "value": getTodayDate,
+                            "matchType": "equals",
+                            "precision": precision
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+   
+    var pipelineData = '';
+     var options = {
+        hostname: OPEN_API_HOST_NAME,
+        path: '/encompass/v1/loanPipeline?limit=5',
+        method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'elli-session': globalSessionId
+            'Authorization': "Bearer " + authToken
         }
     };
     var req = https.request(options, function (res) {
@@ -354,21 +352,16 @@ function makeRateLockExpirationRequest(callback, duration) {
         res.on('end', function () {
             var speechOutput = "";
             var loanObj = JSON.parse(pipelineData);
-            var loanCount = loanObj.GetLoanPipelinePagedResponse.LoanCount > 5 ? 5 : loanObj.GetLoanPipelinePagedResponse.LoanCount;
+            var loanCount = loanObj.length > 5 ? 5 : loanObj.length;
             if (loanCount > 0) {
                 for (var i = 0; i < loanCount; i++) {
-                    var borrower = loanCount == 1 ? loanObj.GetLoanPipelinePagedResponse.Items.PipelineItem.FieldData.PipelineItemData.filter(function (el) {
-                        return (el.Name === "Fields.4002");
-                    }) : loanObj.GetLoanPipelinePagedResponse.Items.PipelineItem[i].FieldData.PipelineItemData.filter(function (el) {
-                        return (el.Name === "Fields.4002");
-                    });
                     if (i == 0)
-                        speechOutput += borrower[0].Value;
+                        speechOutput += loanObj[i].fields["Fields.4002"];
                     else {
                         if (i == (loanCount - 1))
-                            speechOutput += ", and " + borrower[0].Value + " ";
+                            speechOutput += ", and " + loanObj[i].fields["Fields.4002"] + " ";
                         else
-                            speechOutput += "," + borrower[0].Value + " ";
+                            speechOutput += "," + loanObj[0].fields["Fields.4002"] + " ";
                     }
                 }
 
@@ -391,27 +384,41 @@ function makeRateLockExpirationRequest(callback, duration) {
     req.write(JSON.stringify(last7DaysRateLockExpPayload));
     req.end();
 }
+//End
 
+//Function to get the current rate and program
 function makeCurrentRateAndProgramRequest(borrowerLastName, callback) {
     var borrowNameSearchPayload = {
-        'Fields': { 'PipelineField': defaultFields },
-        'Filter': { 'FilterCriterion': { 'DataType': 'IsString', 'EvaluationOperator': 'IsExact', 'Field': 'Fields.4002', 'MinRange': borrowerLastName } },
-        'MaxCount': 1,
-        'OrgType': 'Internal',
-        'Ownership': 'All',
-        'PageIndex': 0,
-        'PageSize': 1,
-        'LoanFolder': workingFolder
+        'Fields': defaultFields,
+        'Filter': {
+            "terms": [
+                {
+                    "canonicalName": "Loan.LoanFolder",
+                    "value": workingFolder,
+                    "matchType": "exact"
+                },
+                {
+                    "operator": "and",
+                    "terms": [
+                        {
+                            "canonicalName": "Fields.4002",
+                            "matchType": "exact",
+                            "value": borrowerLastName
+                        }
+                    ]
+                }
+            ]
+        }
+
     }
     var pipelineData = '';
     var options = {
         hostname: OPEN_API_HOST_NAME,
-        path: '/loans/pipeline/paged',
+        path: '/encompass/v1/loanPipeline?limit=1',
         method: 'POST',
-
         headers: {
             'Content-Type': 'application/json',
-            'elli-session': globalSessionId
+            'Authorization': "Bearer " + authToken
         }
     };
     var req = https.request(options, function (res) {
@@ -429,15 +436,9 @@ function makeCurrentRateAndProgramRequest(borrowerLastName, callback) {
             var currentRate;
             var currentProgram;
             var loanObj = JSON.parse(pipelineData);
-            if (loanObj.GetLoanPipelinePagedResponse.LoanCount > 0) {
-                var currentProgramObj = loanObj.GetLoanPipelinePagedResponse.Items.PipelineItem.FieldData.PipelineItemData.filter(function (el) {
-                    return (el.Name === "Fields.1401");
-                });
-                var currentRateObj = loanObj.GetLoanPipelinePagedResponse.Items.PipelineItem.FieldData.PipelineItemData.filter(function (el) {
-                    return (el.Name === "Fields.3");
-                });
-                currentProgram = currentProgramObj[0].Value;
-                currentRate = currentRateObj[0].Value;
+            if (loanObj.length > 0) {
+                currentProgram = loanObj[0].fields["Fields.1401"];
+                currentRate = loanObj[0].fields["Fields.3"];;
                 speechOutput = "The " + borrowerLastName + " loan has a " + currentProgram + " with an " + Number(currentRate) + "% APR";
                 handleAnswerRequest(callback, speechOutput, false);
             }
@@ -458,7 +459,8 @@ function makeCurrentRateAndProgramRequest(borrowerLastName, callback) {
     req.write(JSON.stringify(borrowNameSearchPayload));
     req.end();
 }
-
+//End
+//Helper Functions
 function getBorrowerNameFromIntent(intent, assignDefault) {
 
     var nameSlot = intent.slots.LastName;
@@ -559,4 +561,5 @@ function buildResponse(sessionAttributes, speechletResponse) {
         response: speechletResponse
     };
 }
+//End
 
